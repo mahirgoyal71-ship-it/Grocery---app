@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MansaTownKart - Fresh Groceries Delivered</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#16a34a',
+                        primaryDark: '#15803d',
+                        accent: '#f59e0b',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        @media print {
+            body * { visibility: hidden; }
+            #printable-receipt, #printable-receipt * { visibility: visible; }
+            #printable-receipt { position: absolute; left: 0; top: 0; width: 100%; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 dark:bg-gray-900 dark:text-gray-100 min-h-screen pb-20 font-sans antialiased transition-colors duration-200">
+
+    <!-- Header / Top Bar -->
+    <header class="sticky top-0 z-40 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-700 px-4 py-3 flex items-center justify-between shadow-sm">
+        <div class="flex items-center space-x-2">
+            <div class="bg-primary text-white p-2 rounded-xl font-black text-xl tracking-wider">MTK</div>
+            <div>
+                <h1 class="font-bold text-lg leading-tight text-gray-900 dark:text-white">MansaTownKart</h1>
+                <p class="text-xs text-gray-500 dark:text-gray-400">Ratia Local Grocery Delivery</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2">
+            <button onclick="toggleLanguage()" class="px-2.5 py-1 text-xs font-semibold rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition">
+                <span id="lang-label">हिंदी</span>
+            </button>
+            <button onclick="toggleDarkMode()" class="p-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition">
+                <i data-lucide="moon" class="w-4 h-4 dark:hidden"></i>
+                <i data-lucide="sun" class="w-4 h-4 hidden dark:block text-amber-400"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- App Views Container -->
+    <main class="max-w-md mx-auto px-4 py-4">
+
+        <!-- VIEW 1: HOME CATALOG & SEARCH -->
+        <section id="view-home" class="space-y-4">
+            <!-- Search & Voice Input -->
+            <div class="relative flex items-center">
+                <i data-lucide="search" class="absolute left-3 w-5 h-5 text-gray-400"></i>
+                <input type="text" id="search-input" onkeyup="filterProducts()" placeholder="Search Atta, Dal, Oil, Soaps..." class="w-full pl-10 pr-10 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-primary text-sm">
+                <button onclick="startVoiceSearch()" class="absolute right-3 p-1 text-gray-500 hover:text-primary">
+                    <i data-lucide="mic" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Primary Categories -->
+            <div>
+                <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Categories</h2>
+                <div class="flex space-x-2 overflow-x-auto no-scrollbar pb-1" id="category-pills"></div>
+            </div>
+
+            <!-- Subcategories -->
+            <div id="subcategory-container" class="hidden">
+                <h2 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Subcategories</h2>
+                <div class="flex space-x-2 overflow-x-auto no-scrollbar pb-1" id="subcategory-pills"></div>
+            </div>
+
+            <!-- Product Grid -->
+            <div>
+                <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3" id="catalog-heading">All Items</h2>
+                <div class="grid grid-cols-2 gap-3" id="product-grid"></div>
+            </div>
+        </section>
+
+        <!-- VIEW 2: CATEGORIES EXPLORER -->
+        <section id="view-categories" class="hidden space-y-4">
+            <h2 class="text-lg font-bold">Explore All Categories</h2>
+            <div class="grid grid-cols-2 gap-3" id="full-category-list"></div>
+        </section>
+
+        <!-- VIEW 3: LIVE ORDERS & TRACKING -->
+        <section id="view-orders" class="hidden space-y-4">
+            <h2 class="text-lg font-bold">Your Orders & Tracking</h2>
+            <div id="active-orders-list" class="space-y-4"></div>
+        </section>
+
+        <!-- VIEW 4: CART & CHECKOUT -->
+        <section id="view-cart" class="hidden space-y-4">
+            <h2 class="text-lg font-bold">Your Basket</h2>
+            <div id="cart-items-list" class="space-y-3"></div>
+
+            <div id="cart-summary" class="bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-200 dark:border-gray-700 space-y-3 shadow-sm">
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Items Subtotal</span>
+                    <span class="font-semibold" id="cart-subtotal">₹0</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-500">Delivery Fee</span>
+                    <span class="font-semibold text-primary">₹32</span>
+                </div>
+                
+                <!-- Minimum Order Requirement Progress Indicator -->
+                <div id="min-order-progress" class="pt-2 border-t border-gray-100 dark:border-gray-700 space-y-1">
+                    <div class="flex justify-between text-xs font-semibold">
+                        <span id="min-order-text" class="text-amber-600 dark:text-amber-400">Min. Order: ₹500</span>
+                        <span id="min-order-remaining">Add ₹500 more</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
+                        <div id="min-order-bar" class="bg-amber-500 h-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Delivery Details Form -->
+                <div class="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-700 text-xs">
+                    <input type="text" id="cust-name" placeholder="Full Name" class="w-full p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg">
+                    <input type="tel" id="cust-phone" placeholder="Phone Number" class="w-full p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg">
+                    <textarea id="cust-address" placeholder="Delivery Address & Landmark" class="w-full p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg" rows="2"></textarea>
+                    
+                    <!-- Time Slot -->
+                    <select id="cust-slot" class="w-full p-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg">
+                        <option value="Standard (1-2 Hours)">Standard Delivery (1-2 Hours)</option>
+                        <option value="Afternoon Slot (12 PM - 3 PM)">Afternoon Slot (12 PM - 3 PM)</option>
+                        <option value="Evening Slot (5 PM - 8 PM)">Evening Slot (5 PM - 8 PM)</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between text-base font-bold pt-2 border-t border-gray-100 dark:border-gray-700">
+                    <span>Total Amount</span>
+                    <span class="text-primary" id="cart-total">₹32</span>
+                </div>
+
+                <!-- Checkout Action Buttons -->
+                <button id="btn-checkout-upi" onclick="placeOrder('UPI')" disabled class="w-full py-3 bg-primary text-white font-bold rounded-xl shadow-lg hover:bg-primaryDark transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    Pay via UPI (Get Handover OTP)
+                </button>
+                <button id="btn-checkout-wa" onclick="placeOrder('WhatsApp')" disabled class="w-full py-2.5 bg-emerald-600 text-white font-semibold rounded-xl hover:bg-emerald-700 transition text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                    Send Order to WhatsApp
+                </button>
+            </div>
+        </section>
+
+        <!-- VIEW 5: ACCOUNT & ADMIN SETTINGS -->
+        <section id="view-settings" class="hidden space-y-4">
+            <h2 class="text-lg font-bold">Account & Settings</h2>
+            
+            <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                <div class="flex items-center space-x-3">
+                    <div class="p-3 bg-primary/10 text-primary rounded-xl">
+                        <i data-lucide="user" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold text-sm">Customer Profile</h3>
+                        <p class="text-xs text-gray-500">Manage address and preferences</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Access Section -->
+            <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-3">
+                        <div class="p-3 bg-amber-500/10 text-amber-500 rounded-xl">
+                            <i data-lucide="shield" class="w-6 h-6"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-sm">Store Manager Admin</h3>
+                            <p class="text-xs text-gray-500">Order approvals, status & inventory</p>
+                        </div>
+                    </div>
+                    <button onclick="openAdminModal()" class="px-3 py-1.5 bg-amber-500 text-white text-xs font-bold rounded-lg hover:bg-amber-600">Login</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ADMIN MODAL DASHBOARD -->
+        <div id="admin-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+            <div class="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto border border-gray-200 dark:border-gray-700">
+                <div class="flex justify-between items-center border-b pb-3 border-gray-100 dark:border-gray-700">
+                    <h3 class="font-bold text-lg">Admin Control Center</h3>
+                    <button onclick="closeAdminModal()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>
+
+                <!-- PIN Lock Screen -->
+                <div id="admin-lock" class="space-y-3 text-center py-4">
+                    <p class="text-xs text-gray-500">Enter Admin PIN (Default: 1234)</p>
+                    <input type="password" id="admin-pin" maxlength="4" class="w-32 mx-auto text-center tracking-widest text-xl font-mono p-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700">
+                    <button onclick="verifyAdminPIN()" class="block w-full py-2 bg-primary text-white font-bold rounded-xl">Unlock Dashboard</button>
+                </div>
+
+                <!-- Admin Controls -->
+                <div id="admin-content" class="hidden space-y-4">
+                    <!-- Live Orders List -->
+                    <div>
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Live Orders & Approval</h4>
+                        <div id="admin-orders-list" class="space-y-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav class="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-gray-800/95 backdrop-blur-lg border-t border-gray-200 dark:border-gray-700 px-2 py-2">
+        <div class="max-w-md mx-auto grid grid-cols-5 text-center text-xs">
+            <button onclick="switchTab('home')" id="nav-home" class="flex flex-col items-center py-1 text-primary font-bold">
+                <i data-lucide="home" class="w-5 h-5 mb-0.5"></i>
+                <span>Home</span>
+            </button>
+            <button onclick="switchTab('categories')" id="nav-categories" class="flex flex-col items-center py-1 text-gray-400 hover:text-gray-600">
+                <i data-lucide="grid" class="w-5 h-5 mb-0.5"></i>
+                <span>Categories</span>
+            </button>
+            <button onclick="switchTab('orders')" id="nav-orders" class="flex flex-col items-center py-1 text-gray-400 hover:text-gray-600">
+                <i data-lucide="package" class="w-5 h-5 mb-0.5"></i>
+                <span>Orders</span>
+            </button>
+            <button onclick="switchTab('cart')" id="nav-cart" class="flex flex-col items-center py-1 text-gray-400 hover:text-gray-600 relative">
+                <i data-lucide="shopping-cart" class="w-5 h-5 mb-0.5"></i>
+                <span>Cart</span>
+                <span id="cart-badge" class="absolute -top-1 right-3 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full hidden">0</span>
+            </button>
+            <button onclick="switchTab('settings')" id="nav-settings" class="flex flex-col items-center py-1 text-gray-400 hover:text-gray-600">
+                <i data-lucide="settings" class="w-5 h-5 mb-0.5"></i>
+                <span>Account</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Printable Receipt Layout (Hidden) -->
+    <div id="printable-receipt" class="hidden p-6 font-mono text-xs"></div>
+
+    <!-- Application Script -->
+    <script>
+        // Store Catalog Data
+        const products = [
+            { id: 1, name: 'Aashirvaad Shuddh Chakki Atta', category: 'Atta & Flours', subcategory: 'Whole Wheat Atta', price: 380, weight: '10 kg' },
+            { id: 2, name: 'Fortune Sunlite Refined Oil', category: 'Oils & Ghee', subcategory: 'Refined Oil', price: 135, weight: '1 L' },
+            { id: 3, name: 'Amul Desi Ghee', category: 'Oils & Ghee', subcategory: 'Desi Ghee', price: 610, weight: '1 L' },
+            { id: 4, name: 'Tata Salt Vacuum Evaporated', category: 'Spices & Salt', subcategory: 'Salt', price: 28, weight: '1 kg' },
+            { id: 5, name: 'Fortune Everyday Basmati Rice', category: 'Rice & Grains', subcategory: 'Basmati Rice', price: 340, weight: '5 kg' },
+            { id: 6, name: 'Tata Sampann Unpolished Arhar Dal', category: 'Pulses & Dals', subcategory: 'Arhar / Toor Dal', price: 160, weight: '1 kg' },
+            { id: 7, name: 'Surf Excel Easy Wash Powder', category: 'Cleaning & Detergents', subcategory: 'Detergent Powder', price: 140, weight: '1 kg' },
+            { id: 8, name: 'Dettol Original Soap (3+1 Pack)', category: 'Soaps & Hygiene', subcategory: 'Bath Soaps', price: 175, weight: '4x125g' },
+        ];
+
+        let cart = {};
+        let activeTab = 'home';
+        let currentLang = 'EN';
+        let orders = JSON.parse(localStorage.getItem('mtk_orders') || '[]');
+
+        function initApp() {
+            lucide.createIcons();
+            renderCategories();
+            renderProducts(products);
+            updateCartUI();
+            renderOrders();
+        }
+
+        function switchTab(tabId) {
+            ['home', 'categories', 'orders', 'cart', 'settings'].forEach(t => {
+                document.getElementById(`view-${t}`).classList.add('hidden');
+                document.getElementById(`nav-${t}`).className = 'flex flex-col items-center py-1 text-gray-400 hover:text-gray-600';
+            });
+            document.getElementById(`view-${tabId}`).classList.remove('hidden');
+            document.getElementById(`nav-${tabId}`).className = 'flex flex-col items-center py-1 text-primary font-bold';
+            activeTab = tabId;
+        }
+
+        function renderCategories() {
+            const categories = ['All', ...new Set(products.map(p => p.category))];
+            const pillsContainer = document.getElementById('category-pills');
+            pillsContainer.innerHTML = categories.map(cat => `
+                <button onclick="selectCategory('${cat}')" class="px-3.5 py-1.5 rounded-full text-xs font-medium border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 whitespace-nowrap hover:bg-primary hover:text-white transition">
+                    ${cat}
+                </button>
+            `).join('');
+        }
+
+        function selectCategory(category) {
+            if (category === 'All') {
+                document.getElementById('subcategory-container').classList.add('hidden');
+                renderProducts(products);
+                return;
+            }
+            const filtered = products.filter(p => p.category === category);
+            const subcategories = [...new Set(filtered.map(p => p.subcategory))];
+            
+            const subContainer = document.getElementById('subcategory-pills');
+            subContainer.innerHTML = subcategories.map(sub => `
+                <button onclick="selectSubcategory('${category}', '${sub}')" class="px-3 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 whitespace-nowrap">
+                    ${sub}
+                </button>
+            `).join('');
+            
+            document.getElementById('subcategory-container').classList.remove('hidden');
+            renderProducts(filtered);
+        }
+
+        function selectSubcategory(cat, sub) {
+            const filtered = products.filter(p => p.category === cat && p.subcategory === sub);
+            renderProducts(filtered);
+        }
+
+        function renderProducts(items) {
+            const grid = document.getElementById('product-grid');
+            grid.innerHTML = items.map(p => `
+                <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-3 flex flex-col justify-between shadow-sm">
+                    <div>
+                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${p.subcategory}</span>
+                        <h3 class="text-xs font-semibold text-gray-900 dark:text-white line-clamp-2 mt-0.5">${p.name}</h3>
+                        <p class="text-[11px] text-gray-500 mt-1">${p.weight}</p>
+                    </div>
+                    <div class="flex items-center justify-between mt-3">
+                        <span class="text-sm font-bold text-gray-900 dark:text-white">₹${p.price}</span>
+                        <button onclick="addToCart(${p.id})" class="px-2.5 py-1 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primaryDark transition">+ Add</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addToCart(id) {
+            cart[id] = (cart[id] || 0) + 1;
+            updateCartUI();
+        }
+
+        function updateCartQty(id, delta) {
+            if (cart[id]) {
+
+          
